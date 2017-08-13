@@ -1,0 +1,69 @@
+#!/bin/bash
+
+# Work in current directory
+cd $(dirname "$0")
+
+# Variables
+WORKSPACE="$(pwd)/workspace"
+SRC="$(pwd)/PDFWriter3_6"
+OUT="$(pwd)/out"
+ABIS=(armeabi armeabi-v7a x86 mips x86_64 arm64-v8a mips64)
+LIBS=(PDFWriter FreeType LibJpeg LibTiff ZLib)
+API_LEVEL=21
+
+# Ye olde functionz
+function makeWorkspace {
+  rm -rf "$WORKSPACE"
+  mkdir "$WORKSPACE" &&
+  mkdir "$WORKSPACE/build" &&
+  cp -r "$SRC/." "$WORKSPACE/"
+}
+
+function makeOut {
+  rm -rf "$OUT" &&
+  mkdir "$OUT" &&
+  for LIB in "${LIBS[@]}"; do
+    mkdir "$OUT/$LIB"
+    mkdir "$OUT/$LIB/build"
+    for ABI in "${ABIS[@]}"; do
+      mkdir "$OUT/$LIB/build/$ABI"
+    done
+  done
+  mkdir "$OUT/PDFWriter/include"
+}
+
+function harvestHeaders {
+  find "$WORKSPACE/PDFWriter" -name \*.h -exec cp {} "$OUT/PDFWriter/include" \;
+}
+
+function buildABI {
+  cd "$WORKSPACE/build" &&
+  cmake -DCMAKE_ANDROID_NDK=$ANDROID_HOME/ndk-bundle/ \
+        -DCMAKE_SYSTEM_NAME=Android                   \
+        -DCMAKE_ANDROID_ARCH_ABI=$1                   \
+        -DCMAKE_SYSTEM_VERSION=$API_LEVEL             \
+        .. &&
+  make
+}
+
+function harvestABI {
+  cd "$WORKSPACE/build" &&
+  cp ./PDFWriter/libPDFWriter.a "$OUT/PDFWriter/build/$1"
+  cp ./FreeType/libFreeType.a "$OUT/FreeType/build/$1"
+  cp ./LibJpeg/libLibJpeg.a "$OUT/LibJpeg/build/$1"
+  cp ./LibTiff/libLibTiff.a "$OUT/LibTiff/build/$1"
+  cp ./ZLib/libZlib.a "$OUT/ZLib/build/$1"
+}
+
+function buildAndHarvestABIs {
+  for ABI in "${ABIS[@]}"; do
+    makeWorkspace &&
+    buildABI "$ABI" &&
+    harvestABI "$ABI"
+  done
+}
+
+# Executable section:
+makeOut &&
+buildAndHarvestABIs &&
+harvestHeaders
